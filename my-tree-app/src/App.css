@@ -1,7 +1,7 @@
 
 .scroll-container {
-  height: 90%;
-  max-height: 600px;
+  height: 90vh;
+  max-height: 500px;
   overflow-y: auto;
   position: relative;
 }
@@ -9,7 +9,7 @@
 .addTablebutton {
   background-color: white; /* Green */
   border: none;
-  color: dark;
+  color: #000000;
   padding: 10px 20px;
   text-align: center;
   text-decoration: none;

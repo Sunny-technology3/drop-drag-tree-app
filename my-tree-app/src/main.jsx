@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
-import 'react-complex-tree/lib/style-modern.css'; // <- Thêm dòng này
+import 'react-complex-tree/lib/style-modern.css'; 
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

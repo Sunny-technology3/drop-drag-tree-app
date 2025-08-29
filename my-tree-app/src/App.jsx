@@ -1,59 +1,88 @@
-import React, { useEffect, useState } from "react";
-import {
-  UncontrolledTreeEnvironment,
-  StaticTreeDataProvider,
-  Tree
-} from "react-complex-tree";
-import "react-complex-tree/lib/style-modern.css";
+import { useState, useEffect } from "react";
+import { ControlledTreeEnvironment, StaticTreeDataProvider, Tree } from "react-complex-tree";
 import { Upload, message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import axios from "axios";
-import "./App.css"; // Import your CSS styles
+import "./App.css";
 import ClearDatabaseButton from "./hooks/ClearDatabaseButton";
 
 export default function App() {
-  const [dbData, setDbData] = useState(null);
+  const [messageApi, contextHolder] = message.useMessage();
   const [tables, setTables] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
   const [viewState, setViewState] = useState({});
+  const [searchTerm, setSearchTerm] = useState("");
   const { Dragger } = Upload;
 
+  const preprocessData = (data) => {
+    const result = {};
+    for (const key in data) {
+      const item = data[key];
+      result[key] = {
+        data: item.data,
+        children: item.children || [],
+        isFolder: item.isFolder || (item.children && item.children.length > 0) || false,
+        hasChildren: item.isFolder || (item.children && item.children.length > 0) || false,
+        index: key,
+      };
+    }
+    return result;
+  };
+
+  const loadData = async () => {
+    try {
+      const res = await fetch("http://localhost:4000/api/tree");
+      const data = await res.json();
+
+      if (data["root"]) {
+        const processedData = preprocessData(data);
+        const tableId = "tree-1";
+        setTables([{ id: "tree-1", rootId: "root", data: processedData }]);
+        
+        setViewState((prev) => ({
+          ...prev,
+          [tableId]: {
+            expandedItems: new Set(["root"]),
+            selectedItems: new Set(),
+          },
+        }));
+      } else {
+        console.warn("Dữ liệu không có rootId hợp lệ");
+        setTables([]);
+      }
+    } catch (err) {
+      messageApi.error("Lỗi khi tải dữ liệu từ server.");
+    }
+  };
+
   useEffect(() => {
-    fetch("http://localhost:4000/api/tree")
-      .then((res) => res.json())
-      .then((data) => {
-        setDbData(data);
-        setTables([{ id: "tree-1", rootId: "root", data }]);
-      });
+    loadData();
   }, []);
 
   const addTable = () => {
     const newId = `tree-${tables.length + 1}`;
+    const rootKey = `${newId}-root`;
     const emptyRoot = {
-      [`${newId}-root`]: {
-        index: `${newId}-root`,
+      [rootKey]: {
+        index: rootKey,
         isFolder: true,
         children: [],
         data: `Table ${tables.length + 1}`,
       },
     };
-    setTables([
-      ...tables,
-      { id: newId, rootId: `${newId}-root`, data: emptyRoot },
-    ]);
+
+    setTables([...tables, { id: newId, rootId: rootKey, data: emptyRoot }]);
+
+    setViewState((prev) => ({
+      ...prev,
+      [newId]: {
+        expandedItems: new Set([rootKey]),
+        selectedItems: new Set(),
+      },
+    }));
   };
 
   const deleteTable = (id) => {
-    const table = tables.find(t => t.id === id);
-    if (!table) return;
-
-    const rootItem = table.data[table.rootId];
-    if (rootItem.children.length > 0) {
-      alert("Không thể xóa bảng nếu còn item");
-      return;
-    }
-
-    setTables(tables.filter(t => t.id !== id));
+    setTables(tables.filter((table) => table.id !== id));
   };
 
   const props = {
@@ -64,183 +93,278 @@ export default function App() {
       try {
         const formData = new FormData();
         formData.append("file", file);
-
         await axios.post("http://localhost:4000/upload", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
-        message.success(`${file.name} đã upload thành công`);
+        messageApi.success(`${file.name} đã upload thành công`);
+
+        loadData();
         onSuccess("ok");
       } catch (err) {
-        console.error(err);
-        message.error(`${file.name} upload thất bại`);
+        messageApi.error(`${file.name} upload thất bại`);
         onError(err);
       }
     },
   };
 
-  // tìm kiếm + tự expand cha
-  useEffect(() => {
-    if (!dbData) return;
+  const onSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+  };
 
+  const onDrop = (source, destination) => {
+    if (!destination || destination.parentItem == null) {
+      console.warn("targetParentId không hợp lệ");
+      return;
+    }
+
+    const { treeId: sourceTreeId, itemId: draggedItemId } = source;
+    const { treeId: destTreeId, parentItem: targetParentId } = destination;
+
+    // Deep copy tables và data
+    const updatedTables = tables.map((t) => ({
+      ...t,
+      data: { ...t.data },
+    }));
+
+    const sourceTable = updatedTables.find((t) => t.id === sourceTreeId);
+    const destTable = updatedTables.find((t) => t.id === destTreeId);
+
+    if (!sourceTable || !destTable) {
+      console.warn("Không tìm thấy bảng nguồn hoặc đích");
+      return;
+    }
+
+    const draggedItem = sourceTable.data[draggedItemId];
+
+    if (!draggedItem) {
+      console.warn("Không tìm thấy item kéo");
+      return;
+    }
+
+    if (sourceTreeId !== destTreeId) {
+      // Xóa khỏi bảng nguồn
+      delete sourceTable.data[draggedItemId];
+      const sourceRootChildren = sourceTable.data[sourceTable.rootId]?.children || [];
+      sourceTable.data[sourceTable.rootId].children = sourceRootChildren.filter(id => id !== draggedItemId);
+    } else {
+      // Xóa khỏi cha cũ
+      const parentEntry = Object.values(sourceTable.data).find(item => item.children?.includes(draggedItemId));
+      if (parentEntry) {
+        parentEntry.children = parentEntry.children.filter(id => id !== draggedItemId);
+      }
+    }
+
+    if (!destTable.data[targetParentId].children) {
+      destTable.data[targetParentId].children = [];
+    }
+
+    // Thêm vào bảng đích
+    destTable.data[draggedItemId] = draggedItem;
+    destTable.data[targetParentId].children.push(draggedItemId);
+
+    setTables(updatedTables);
+  };
+
+  const updateViewState = (searchTerm) => {
     const allItems = tables.reduce((acc, table) => ({ ...acc, ...table.data }), {});
     const matches = Object.keys(allItems).filter((key) =>
       allItems[key].data.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const expanded = new Set(["root"]); // luôn mở root
+    const expanded = new Set();
 
     matches.forEach((matchId) => {
-      let parent = Object.values(allItems).find((x) =>
-        x.children.includes(matchId)
-      );
+      let parent = Object.values(allItems).find((x) => x.children?.includes(matchId));
       while (parent) {
         expanded.add(parent.index);
-        parent = Object.values(allItems).find((x) =>
-          x.children.includes(parent.index)
-        );
+        parent = Object.values(allItems).find((x) => x.children?.includes(parent.index));
       }
     });
 
-    setViewState({
-      "tree-1": {
-        expandedItems: expanded,
-      },
+    const newViewState = {};
+    tables.forEach((table) => {
+      newViewState[table.id] = {
+        expandedItems: new Set([table.rootId, ...expanded]),
+        selectedItems: new Set(),
+      };
     });
-  }, [searchTerm, dbData, tables]);
 
-  if (!dbData) return <div>Loading...</div>;
+    setViewState(newViewState);
+  };
+
+  useEffect(() => {
+    if (searchTerm) {
+      updateViewState(searchTerm);
+    }
+  }, [searchTerm, tables]);
 
   return (
-    <div>
-      {/* upload + search */}
-      <div style={{ display: "flex", position:"absolute", top: 0, left:0, alignItems: "center", marginBottom: "20px" }}>
-        <div style={{ flex: 1 }}>
-          <Dragger {...props}>
-            <p className="ant-upload-drag-icon">
-              <UploadOutlined />
-            </p>
-            <p className="ant-upload-text">Kéo thả file Excel vào đây</p>
-          </Dragger>
-        </div>
-        <div style={{ marginLeft: "20px" }}>
-          <input
-            type="text"
-            placeholder="Tìm kiếm..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              padding: "6px 10px",
-              width: "200px",
-              border: "1px solid #ccc",
-              borderRadius: "4px"
-            }}
-          />
-        </div>
-      </div>
+    <>
+      {contextHolder}
 
-      <div style={{ position: "absolute", top: 0, right: 0, padding: "10px" }}>
-        <ClearDatabaseButton />
-      </div>
-      
-      <div style={{ position: "absolute", top: "100px", left: 0, right: 0, textAlign: "center", marginBottom: "20px" }}>
-          <button onClick={addTable} className="addTablebutton">Thêm bảng</button>
-      </div>
-      
+      <div>
+        <div style={{ display: "flex", position: "absolute", top: 0, left: 0, alignItems: "center", marginBottom: "20px" }}>
+          <div style={{ flex: 1 }}>
+            <Dragger {...props}>
+              <p className="ant-upload-drag-icon">
+                <UploadOutlined />
+              </p>
+              <p className="ant-upload-text">Kéo thả file Excel vào đây</p>
+            </Dragger>
+          </div>
 
-      <UncontrolledTreeEnvironment
-        canDragAndDrop
-        canDropOnFolder
-        canReorderItems
-        getItemTitle={(item) => {
-          if (searchTerm && item.data.toLowerCase().includes(searchTerm.toLowerCase())) {
-            return <span style={{ backgroundColor: "yellow" }}>{item.data}</span>;
-          }
-          return item.data;
-        }}
-        dataProvider={
-          new StaticTreeDataProvider(
-            tables.reduce((acc, table) => ({ ...acc, ...table.data }), {}),
-            (item, data) => ({ ...item, data })
-          )
-        }
-        viewState={viewState}
-      >
-        <div style={{ display: "flex", position:"absolute", top:"150px", gap: "20px", marginTop: "40px" }}>
-          {tables.map((table, tableIndex) => (
-          <div
-            key={table.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: "8px",
-              padding: "5px 5px 5px 5px",
-              backgroundColor: "white",
-              width: "250px",
-              position: "relative",
-            }}
-          >
-            {/* Input đổi tên table */}
+          <div style={{ marginLeft: "20px" }}>
             <input
               type="text"
-              value={table.name || `Table ${tableIndex + 1}`} // nếu chưa có name thì dùng Table 1,2,...
-              onChange={(e) => {
-                const newTables = [...tables];
-                newTables[tableIndex].name = e.target.value; // lưu vào state
-                setTables(newTables);
-              }}
+              placeholder="Tìm kiếm..."
+              value={searchTerm}
+              onChange={onSearchChange}
               style={{
+                padding: "6px 10px",
                 width: "200px",
-                marginBottom: "5px",
-                padding: "4px 6px",
-                borderRadius: "4px",
                 border: "1px solid #ccc",
-                fontWeight: "bold"
+                borderRadius: "4px",
               }}
             />
+          </div>
+        </div>
 
-            {/* Nút xóa table */}
-            <button
-              onClick={() => deleteTable(table.id)}
+        <div style={{ position: "absolute", top: 0, right: 0, padding: "10px" }}>
+          <ClearDatabaseButton messageApi={messageApi} setTables={setTables} />
+        </div>
+
+        <div style={{ position: "absolute", top: "100px", left: 0, right: 0, textAlign: "center", marginBottom: "20px" }}>
+          <button onClick={addTable} className="addTablebutton">Thêm bảng</button>
+        </div>
+
+        {tables.length === 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: '40px' }}>
+            <div
               style={{
-                position: "absolute",
-                top: "5px",
-                right: "5px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "18px",
-                height: "18px",
-                background: "transparent",
-                border: "none",
-                borderRadius: "50%",
-                cursor: "pointer",
-                fontSize: "12px",
-                color: "#555",
-                padding: 0,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#e0e0e0";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
+                border: "1px solid #ff9800",
+                backgroundColor: "#fff3e0",
+                color: "#ef6c00",
+                padding: "20px 20px",
+                borderRadius: "6px",
+                fontWeight: "600",
+                maxWidth: "100px",
+                margin: "20px opx 20px 40px",
+                textAlign: "center",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.1)"
               }}
             >
-              ×
-            </button>
-
-            {/* Container Tree với scroll */}
-            <div className="scroll-container">
-              <Tree
-                treeId={table.id}
-                rootItem={table.rootId}
-                treeLabel={table.name || `Tree ${tableIndex + 1}`}
-              />
+              Đang tải dữ liệu hoặc chưa có bảng nào
             </div>
           </div>
-        ))}
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              padding: "20px",
+              overflowX: "auto",
+              gap: "20px",
+              marginTop: "160px",
+            }}
+          >
+            {
+              tables.map((table, tableIndex) => {
+                const rootData = table?.data[table.rootId];
+                console.log(viewState[table.id])
+                if (!rootData) {
+                  return (
+                    <div key={table.id} style={{ color: 'red', padding: '10px' }}>
+                      Dữ liệu không hợp lệ hoặc đang tải...
+                    </div>
+                  );
+                }
 
-        </div>
-      </UncontrolledTreeEnvironment>
-    </div>
+                return (
+                  <ControlledTreeEnvironment
+                    key={table.id}
+                    items={table.data}
+                    getItemTitle={(item) => item.data}
+                    rootItem={table.rootId}
+                    viewState={viewState[table.id] || { expandedItems: new Set([table.rootId]), selectedItems: new Set() }}
+                    onViewStateChange={(newState) => {
+                      console.log("New viewState:", newState);
+                      setViewState((prev) => ({
+                        ...prev,
+                        [table.id]: newState,
+                      }));
+                    }}
+                    onSelectItems={(items) => {
+                      console.log(`Bạn đã chọn các mục:`, items);
+                    }}
+                    canDragAndDrop
+                    canDropOnFolder
+                    canReorderItems
+                    onDrop={onDrop}
+                  >
+                    <div
+                      style={{
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        padding: "5px",
+                        backgroundColor: "white",
+                        width: "250px",
+                        position: "relative",
+                        marginRight: "20px"
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={table.name || (tableIndex === 0 ? "Nguyên liệu sản xuất" : `Table ${tableIndex + 1}`)}
+                        onChange={(e) => {
+                          const newTables = [...tables];
+                          newTables[tableIndex].name = e.target.value;
+                          setTables(newTables);
+                        }}
+                        style={{
+                          width: "200px",
+                          marginBottom: "5px",
+                          padding: "4px 6px",
+                          borderRadius: "4px",
+                          border: "1px solid #ccc",
+                          fontWeight: "bold",
+                        }}
+                      />
+
+                      <button
+                        onClick={() => deleteTable(table.id)}
+                        style={{
+                          position: "absolute",
+                          top: "5px",
+                          right: "5px",
+                          background: "transparent",
+                          border: "none",
+                          borderRadius: "50%",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          color: "#555",
+                        }}
+                      >
+                        ×
+                      </button>
+
+                      <div className="scroll-container">
+                        <Tree
+                          treeId={table.id}
+                          rootItem={table.rootId}
+                          treeLabel={table.name || `Tree ${tableIndex + 1}`}
+                          items={table.data}
+                          getItemTitle={(item) => item.data}
+                        />
+                      </div>
+                    </div>
+                  </ControlledTreeEnvironment>
+                );
+              })}
+          </div>
+        )}
+
+      </div>
+    </>
   );
 }

@@ -4,7 +4,7 @@ import cors from "cors";
 import multer from "multer";
 import xlsx from "xlsx";
 import adminRoutes from "./src/routes/admin.js";  
-import buildTreeFromExcel from "./src/utils/buildTreeFromExcel.js"; // Assuming you have this utility function
+import buildTreeFromExcel from "./src/utils/buildTreeFromExcel.js"; 
 const app = express();
 
 // Middleware
@@ -27,7 +27,6 @@ const Item = mongoose.model("Item", ItemSchema);
 
 // Routes
 app.use("/admin", adminRoutes);
-
 
 // API lấy tree
 app.get("/api/tree", async (req, res) => {
@@ -70,8 +69,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     res.status(500).json({ success: false, message: "Upload failed" });
   }
 });
-
-
 
 // Start server
 app.listen(4000, () => {

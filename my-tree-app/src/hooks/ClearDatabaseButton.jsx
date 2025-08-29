@@ -1,26 +1,31 @@
-import React from "react";
 import axios from "axios";
-import "./ClearDatabaseButton.css"; // Import your CSS styles
+import { Popconfirm } from "antd";
+import "./ClearDatabaseButton.css";
 
-function ClearDatabaseButton() {
+function ClearDatabaseButton({ messageApi, setTables }) {
   const handleClear = async () => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ database không?")) {
-      try {
-        const res = await axios.delete("http://localhost:4000/admin/clear-database");
-        alert(res.data.message);
-      } catch (err) {
-        alert("Xóa thất bại: " + err.message);
-      }
+    try {
+      const res = await axios.delete("http://localhost:4000/admin/clear-database");
+      setTables([]);
+
+      messageApi.success(res.data.message);
+    } catch (error) {
+      messageApi.error("Xóa thất bại");
     }
   };
 
   return (
-    <button 
-      onClick={handleClear} 
-      className="clear-btn"
+    <Popconfirm
+      title="Bạn có chắc chắn muốn xóa toàn bộ database?"
+      onConfirm={handleClear}
+      onCancel={() => { }}
+      okText="Yes"
+      cancelText="No"
+      okType="primary"
+      cancelButtonProps={{ danger: true }}
     >
-      Xóa toàn bộ Items
-    </button>
+      <button className="clear-btn">Xóa toàn bộ Items</button>
+    </Popconfirm>
   );
 }
 
