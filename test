@@ -8,6 +8,8 @@ import "react-complex-tree/lib/style-modern.css";
 import { Upload, message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import axios from "axios";
+import "./App.css"; // Import your CSS styles
+import ClearDatabaseButton from "./hooks/ClearDatabaseButton";
 
 export default function App() {
   const [dbData, setDbData] = useState(null);
@@ -21,37 +23,63 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => {
         setDbData(data);
-        setTables([{ id: "tree-1", rootId: "root", data }]);
+
+        const fixedTables = [
+          {
+            id: "tree-1",
+            rootId: "root", // dùng đúng rootId của data backend
+            name: "Table 1",
+            data, // gắn nguyên data fetch vào
+          },
+          {
+            id: "tree-2",
+            rootId: "tree-2-root",
+            name: "Table 2",
+            data: {
+              "tree-2-root": {
+                index: "tree-2-root",
+                isFolder: true,
+                children: [],
+                data: "Table 2",
+              },
+            },
+          },
+          {
+            id: "tree-3",
+            rootId: "tree-3-root",
+            name: "Table 3",
+            data: {
+              "tree-3-root": {
+                index: "tree-3-root",
+                isFolder: true,
+                children: [],
+                data: "Table 3",
+              },
+            },
+          },
+          {
+            id: "tree-4",
+            rootId: "tree-4-root",
+            name: "Table 4",
+            data: {
+              "tree-4-root": {
+                index: "tree-4-root",
+                isFolder: true,
+                children: [],
+                data: "Table 4",
+              },
+            },
+          },
+        ];
+
+        setTables(fixedTables);
       });
   }, []);
 
-  const addTable = () => {
-    const newId = `tree-${tables.length + 1}`;
-    const emptyRoot = {
-      [`${newId}-root`]: {
-        index: `${newId}-root`,
-        isFolder: true,
-        children: [],
-        data: `Table ${tables.length + 1}`,
-      },
-    };
-    setTables([
-      ...tables,
-      { id: newId, rootId: `${newId}-root`, data: emptyRoot },
-    ]);
-  };
 
+  // xoá cả table + items con
   const deleteTable = (id) => {
-    const table = tables.find(t => t.id === id);
-    if (!table) return;
-
-    const rootItem = table.data[table.rootId];
-    if (rootItem.children.length > 0) {
-      alert("Không thể xóa bảng nếu còn item");
-      return;
-    }
-
-    setTables(tables.filter(t => t.id !== id));
+    setTables((prev) => prev.filter((t) => t.id !== id));
   };
 
   const props = {
@@ -112,7 +140,16 @@ export default function App() {
   return (
     <div>
       {/* upload + search */}
-      <div style={{ display: "flex", position:"absolute", top: 0, left:0, alignItems: "center", marginBottom: "20px" }}>
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          alignItems: "center",
+          marginBottom: "20px",
+        }}
+      >
         <div style={{ flex: 1 }}>
           <Dragger {...props}>
             <p className="ant-upload-drag-icon">
@@ -131,24 +168,28 @@ export default function App() {
               padding: "6px 10px",
               width: "200px",
               border: "1px solid #ccc",
-              borderRadius: "4px"
+              borderRadius: "4px",
             }}
           />
         </div>
       </div>
-      
-      <div style={{ position: "absolute", top: "100px", left: 0, right: 0, textAlign: "center", marginBottom: "20px" }}>
-          <button onClick={addTable}>Thêm bảng</button>
+
+      <div style={{ position: "absolute", top: 0, right: 0, padding: "10px" }}>
+        <ClearDatabaseButton />
       </div>
-      
 
       <UncontrolledTreeEnvironment
         canDragAndDrop
         canDropOnFolder
         canReorderItems
         getItemTitle={(item) => {
-          if (searchTerm && item.data.toLowerCase().includes(searchTerm.toLowerCase())) {
-            return <span style={{ backgroundColor: "yellow" }}>{item.data}</span>;
+          if (
+            searchTerm &&
+            item.data.toLowerCase().includes(searchTerm.toLowerCase())
+          ) {
+            return (
+              <span style={{ backgroundColor: "yellow" }}>{item.data}</span>
+            );
           }
           return item.data;
         }}
@@ -160,19 +201,47 @@ export default function App() {
         }
         viewState={viewState}
       >
-        <div style={{ display: "flex", position:"absolute", top:"150px", gap: "20px", marginTop: "20px" }}>
-          {tables.map((table) => (
+        <div
+          style={{
+            display: "flex",
+            position: "absolute",
+            top: "150px",
+            gap: "20px",
+            marginTop: "40px",
+          }}
+        >
+          {tables.map((table, tableIndex) => (
             <div
               key={table.id}
               style={{
                 border: "1px solid #ccc",
                 borderRadius: "8px",
-                padding: "5px 22px 5px 5px",
+                padding: "5px",
                 backgroundColor: "white",
                 width: "250px",
                 position: "relative",
               }}
             >
+              {/* Input đổi tên table */}
+              <input
+                type="text"
+                value={table.name}
+                onChange={(e) => {
+                  const newTables = [...tables];
+                  newTables[tableIndex].name = e.target.value;
+                  setTables(newTables);
+                }}
+                style={{
+                  width: "200px",
+                  marginBottom: "5px",
+                  padding: "4px 6px",
+                  borderRadius: "4px",
+                  border: "1px solid #ccc",
+                  fontWeight: "bold",
+                }}
+              />
+
+              {/* Nút xóa table */}
               <button
                 onClick={() => deleteTable(table.id)}
                 style={{
@@ -202,11 +271,15 @@ export default function App() {
                 ×
               </button>
 
-              <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+              {/* Tree với scroll */}
+              <div
+                className="scroll-container"
+                style={{ maxHeight: "300px", overflowY: "auto" }}
+              >
                 <Tree
                   treeId={table.id}
                   rootItem={table.rootId}
-                  treeLabel={`Tree ${table.id}`}
+                  treeLabel={table.name}
                 />
               </div>
             </div>
@@ -216,3 +289,4 @@ export default function App() {
     </div>
   );
 }
+

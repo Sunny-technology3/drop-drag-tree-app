@@ -22,3 +22,7 @@
 .addTablebutton:hover {
   background-color: rgb(197, 195, 195); /* Darker green on hover */
 }
+
+.faded {
+  opacity: 0.5;
+}
