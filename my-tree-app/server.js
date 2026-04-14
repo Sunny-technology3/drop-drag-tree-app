@@ -4,15 +4,16 @@ import cors from "cors";
 import multer from "multer";
 import xlsx from "xlsx";
 import adminRoutes from "./src/routes/admin.js";  
-import buildTreeFromExcel from "./src/utils/buildTreeFromExcel.js"; // Assuming you have this utility function
+import buildTreeFromExcel from "./src/utils/buildTreeFromExcel.js";
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-dotenv.config(); // load biến môi trường từ file .env
+import dotenv from "dotenv";
 
+dotenv.config(); // load biến môi trường từ file .env
 
 // Lấy URI từ biến môi trường
 const mongoURI = process.env.MONGODB_URI;
@@ -84,9 +85,4 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, message: "Upload failed" });
   }
-});
-
-// Start server
-app.listen(4000, () => {
-  console.log("🚀 Server running on port 4000");
 });
